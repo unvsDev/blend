@@ -1,18 +1,3 @@
 {
-  "version": [
-    {
-      "tag": "1.1",
-      "rawWidget": null,
-      "rawLauncher": null,
-      "preRelease": false,
-      "updateLog": "Apple 날씨, 코로나19 정보(국내) 제공"
-    },
-    {
-      "tag": "1.0",
-      "rawWidget": "https://raw.githubusercontent.com/unvsDev/blend/ae7b4c9562503e8ba974b24dde10b968382e9090/blend-widget.js",
-      "rawLauncher": "https://raw.githubusercontent.com/unvsDev/blend/ae7b4c9562503e8ba974b24dde10b968382e9090/blend.js",
-      "preRelease": true,
-      "updateLog": "초기 출시 및 캘린더, 미리 알림 제공"
-    }
-  ]
+  "latestVersion": "1.3"
 }
