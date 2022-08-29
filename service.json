@@ -2,11 +2,7 @@
   "latestVersion": "1.4",
   "announcement": [
     {
-      "title": "테스트 공지사항입니다.",
-      "link": "https://blend.oopy.io/"
-    },
-    {
-      "title": "[공지] 최신 버전으로 업데이트하기",
+      "title": "가이드 · 최신 버전으로 업데이트하기",
       "link": "https://blend.oopy.io/howto-update"
     }
   ]
