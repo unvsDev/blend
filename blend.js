@@ -1,8 +1,9 @@
 // Variables used by Scriptable.
 // These must be at the very top of the file. Do not edit.
 // icon-color: deep-blue; icon-glyph: moon;
-const version = "1.0"
-let dt = new Date().getTime()
+const version = "1.4.1"
+let dtDate = new Date()
+let dt = dtDate.getTime()
 
 if(config.runsInWidget){
   let widget = new ListWidget()
@@ -48,9 +49,18 @@ let modelorigin = {
   "bgid": [0, 0],
   "bghex": "000000",
   
-  "bgtemp": -1, // 2436_mini
+  "bgResIndex": -1, // DisplayResolutionIndex
   
-  "mver": "1.1",
+  "devid": -1,
+  
+  "updateCache": dt,
+  "service": -1,
+  
+  "showBorder": 0,
+  "stackWidth": 310,
+  "widgetScriptName": "blend-widget",
+  
+  "modelVer": "1.4",
 }
 
 let requiredPaths = ["dir", "adir", "wdir"]
@@ -85,61 +95,107 @@ data.origin = {
   "modified": dt,
   "activated": 0,
   
+  "displayMode": 0,
+  "itmAlignment": 1,
+  "itmSpacerOffset": 0,
+  "itmRepeatOffset": 5,
+  "stackOpacity": 0.15,
+  
   "calendars": [],
   "reminders": [],
   
-  "calendarTwoRow": 0,
-  "calendarLength": 3,
+  "calendarTwoRow": 1,
+  "calendarLength": 4,
   "reminderLength": 3,
-  "showAllDayEvents": 0,
-  "showTodayEvents": 1,
-  "distanceEventStartDate": 1,
+  "showAllDayEvents": 1,
+  "distanceEventStartDate": 7,
   "delayHideEventsMin": 5,
   "eventDurationMethod": 0,
   "showLateReminders": 0,
   "showForTimedReminders": 0,
   "showTodayReminders": 0,
+  "sortReminderByTime": 0,
+  "setCalendarView": 0,
   
+  // Service Cache
   "locations": {},
   "appleWeather": {},
   "openWeather": {},
+  "covidMohw": {},
   
   "delayPositionCacheMin": 10,
   "delayWeatherCacheMin": 10,
+  "apwdTemp": 1,
+  "apwdSolarMovement": 1,
+  "apwdDetail": 0,
+  "apwdHourly": 1,
+  "apwdDaily": 1,
+  
+  "apwdPressure": 1,
+  "apwdHumidity": 1,
+  "apwdApparentTemp": 1,
+  "apwdPrecip": 1,
+  "apwdWindSpeed": 1,
+  "apwdUvIndex": 1,
+  
+  "weatherCtoF": 0,
+  "weatherAlternativeDesc": 1,
   
   "recentPositionRefresh": 0,
   "recentWeatherRefresh": 0,
   
-  "covidRegion": "S. Korea",
+  "covidRegion": 1,
+  "covidCache": 0,
+  "covidShowDetail": 0,
   
   "widgetPadding": [0, 0, 0, 0],
   "layout": [],
   
+  "showBattery": 0,
+  
   "textColor": ["FFFFFF", "FFFFFF"],
   "textSize": [16, 13, 12],
   "textOpacity": 1,
+  "iconSize": 14,
   
   "dateFormat": "M월 d일 E요일",
   "timeFormat": "a h:mm",
   "locale": "ko-kr",
+  "forceLoadService": 0,
   
   "textString": "",
+  "textString2": "",
+  
+  "spacer5": 0,
+  "spacer6": 0,
+  
+  "quickMemo": [],
   
   // TextProperty
   // fontIndex, customFontName, fontSize
-  "_simpleText": [1, "", 0],
+  "_simpleText": [1, "", 27],
+  "_simpleText2": [1, "", 27],
   
-  "_dateText": [1, "", 0],
+  "_dateText": [4, "", 13],
   
-  "_noEventText": [1, "", 12],
-  "_dateMarker": [1, "", 10],
-  "_eventTitle": [1, "", 12],
-  "_eventDuration": [1, "", 12],
+  "_noEventText": [4, "", 15],
+  "_dateMarker": [4, "", 11],
+  "_eventTitle": [1, "", 13],
+  "_eventDuration": [5, "", 12],
   
   "_reminderTitle": [1, "", 12],
+  "_reminderDate": [5, "", 12],
+  
+  "_covidTitle": [4, "", 13],
+  
+  "_awSolarText": [4, "", 10],
+  "_awDetailText": [4, "", 12],
+  
+  "_quickMemoText": [4, "", 13],
 }
 
 const fonts = ["custom", "boldSystem", "boldMonospaced", "boldRounded", "mediumSystem", "mediumMonospaced", "mediumRounded", "lightSystem", "lightMonospaced", "lightRounded"]
+const fontsDesc = ["커스텀 폰트", "Bold", "고정 폭 Bold", "모서리가 둥근 Bold", "Medium", "고정 폭 Medium", "모서리가 둥근 Medium", "Light", "고정 폭 Light", "모서리가 둥근 Light"]
 
 let model = JSON.parse(fm.readString(fpath.model))
 
@@ -158,6 +214,7 @@ model = JSON.parse(JSON.stringify(modelorigin))
 let mindex = data.identifiers.indexOf(model.id)
 data[model.id].modified = dt
 
+// SharedWallpaper
 async function setupTerrace(){
   if(fm.isFileStoredIniCloud(fpath.wall) && !fm.isFileDownloaded(fpath.wall)){
     try {
@@ -172,14 +229,28 @@ async function setupTerrace(){
 
 let terrace = await setupTerrace()
 
-// setup end
+if(args.queryParameters.authsource){
+  await Keychain.set("blend-appleweather-auth", atob(args.queryParameters.authsource))
+  
+  let alert = new Alert()
+  alert.title = "Apple 날씨"
+  alert.message = "등록이 완료되었습니다."
+  alert.addAction("확인")
+  await alert.presentAlert()
+}
 
-
+// Check Update every 4hr+
+if(dt - model.updateCache > 1000 * 60 * 60 * 4 || model.service == -1){
+  try{
+    model.service = await new Request("https://raw.githubusercontent.com/unvsDev/blend/main/service.json").loadJSON()
+    model.updateCache = dt
+  } catch(e){
+    model.updateCache = dt - 1000 * 60 * 60 * 2 // Retry 2hr+
+  }
+}
 
 let rdf = new RelativeDateTimeFormatter()
 rdf.locale = "ko-kr"; rdf.useNumericDateTimeStyle();
-
-// 투명 배경
 
 function cropImage(img, rect) {
   let draw = new DrawContext()
@@ -188,147 +259,63 @@ function cropImage(img, rect) {
   return draw.getImage()
 }
 
-const phoneSizes = {
-  "2778": {
-    "models": ["13 Pro Max", "12 Pro Max"],
-    "small": { "w": 510, "h": 510 },
-    "medium": { "w": 1092, "h": 510 },
-    "large": { "w": 1092, "h": 1146 },
-    "left": 96,
-    "right": 678,
-    "top": 246,
-    "middle": 882,
-    "bottom": 1518
-  },
-
-  "2532": {
-    "models": ["13 Pro", "13", "12 Pro", "12"],
-    "small": { "w": 474, "h": 474 },
-    "medium": { "w": 1014, "h": 474 },
-    "large": { "w": 1014, "h": 1062 },
-    "left": 78,
-    "right": 618,
-    "top": 231,
-    "middle": 819,
-    "bottom": 1407
-  },
-
-  "2688": {
-    "models": ["11 Pro Max", "Xs Max"],
-    "small": { "w": 507, "h": 507 },
-    "medium": { "w": 1080, "h": 507 },
-    "large": { "w": 1080, "h": 1137 },
-    "left": 81,
-    "right": 654,
-    "top": 228,
-    "middle": 858,
-    "bottom": 1488
-  },
-
-  "1792": {
-    "models": ["11", "Xr"],
-    "small": { "w": 338, "h": 338 },
-    "medium": { "w": 720, "h": 338 },
-    "large": { "w": 720, "h": 758 },
-    "left": 54,
-    "right": 436,
-    "top": 160,
-    "middle": 580,
-    "bottom": 1000
-  },
-
-  "2436": {
-    "models": ["11 Pro", "Xs", "X"],
-    "small": { "w": 465, "h": 465 },
-    "medium": { "w": 987, "h": 465 },
-    "large": { "w": 987, "h": 1035 },
-    "left": 69,
-    "right": 591,
-    "top": 213,
-    "middle": 783,
-    "bottom": 1353
-  },
-  
-  "2436_mini": {
-    "models": ["12 Mini"],
-    "small": { "w": 465, "h": 465 },
-    "medium": { "w": 987, "h": 465 },
-    "large": { "w": 987, "h": 1035 },
-    "left": 69,
-    "right": 591,
-    "top": 231,
-    "middle": 801,
-    "bottom": 1371
-  },
-
-  "2208": {
-    "models": ["6+", "6s+", "7+", "8+"],
-    "small": { "w": 471, "h": 471 },
-    "medium": { "w": 1044, "h": 471 },
-    "large": { "w": 1044, "h": 1071 },
-    "left": 99,
-    "right": 672,
-    "top": 114,
-    "middle": 696,
-    "bottom": 1278
-  },
-
-  "1334": {
-    "models": ["6", "6s", "7", "8"],
-    "small": { "w": 296, "h": 296 },
-    "medium": { "w": 642, "h": 296 },
-    "large": { "w": 642, "h": 648 },
-    "left": 54,
-    "right": 400,
-    "top": 60,
-    "middle": 412,
-    "bottom": 764
-  },
-
-  "1136": {
-    "models": ["5", "5s", "5c", "SE"],
-    "small": { "w": 282, "h": 282 },
-    "medium": { "w": 584, "h": 282 },
-    "large": { "w": 584, "h": 622 },
-    "left": 30,
-    "right": 332,
-    "top": 59,
-    "middle": 399,
-    "bottom": 399
-  },
-  
-  "1624": {
-    "models": ["11 Display Zoom mode", "XR Display Zoom mode"],
-    "small": { "w": 310, "h": 310 },
-    "medium": { "w": 658, "h": 310 },
-    "large": { "w": 658, "h": 690 },
-    "left": 46,
-    "right": 394,
-    "top": 142,
-    "middle": 522,
-    "bottom": 902
-  },
-  
-  "2001": {
-    "models": ["Plus Display Zoom mode"],
-    "small": { "w": 444, "h": 444 },
-    "medium": { "w": 963, "h": 444 },
-    "large": { "w": 963, "h": 972 },
-    "left": 81,
-    "right": 600,
-    "top": 90,
-    "middle": 618,
-    "bottom": 1146
-  }
+function getSymbolImage(code, imageSize){
+  let sfs = SFSymbol.named(code)
+  sfs.applyFont(Font.systemFont(imageSize))
+  return sfs.image
 }
 
+// setup end
 
 
 async function showLauncher(){
   let main = new UITable()
   main.showSeparators = true
   
+  let isParameterCopied = false
+  
   function loadMain(){
+    if(model.service != null){
+      if(model.service.latestVersion != version){
+        let updateRow = new UITableRow()
+        updateRow.height = 65
+        updateRow.dismissOnSelect = false
+        
+        let updateText = updateRow.addText(`위젯 업데이트가 가능합니다 → 버전 ${model.service.latestVersion}`, "여기를 눌러 업데이트")
+        updateText.titleFont = Font.semiboldSystemFont(15)
+        updateText.titleColor = Color.blue()
+        
+        updateText.subtitleColor = Color.gray()
+        updateText.subtitleFont = Font.systemFont(14)
+        
+        main.addRow(updateRow)
+        
+        updateRow.onSelect = async () => {
+          let alert = new Alert()
+          alert.title = "업데이트를 지금 설치할까요?"
+          alert.message = "최신 버전의 Blend 위젯 및 런처를 기기에 덮어씁니다. 소스 코드를 직접 수정했을 경우, 해당 파일의 복사본을 별도로 저장하십시오.\n이 과정은 네트워크 연결이 필요합니다."
+          alert.addAction("확인")
+          alert.addCancelAction("취소")
+
+          let r = await alert.presentAlert()
+
+          if(r != -1){
+            saveAllData()
+            fm.writeString(fpath.wall, JSON.stringify(terrace))
+
+            let widgetCode = await new Request(`https://github.com/unvsDev/blend/releases/download/${model.service.latestVersion}/blend-widget.js`).loadString()
+            let launcherCode = await new Request(`https://github.com/unvsDev/blend/releases/download/${model.service.latestVersion}/blend.js`).loadString()
+            
+            await fm.writeString(`${mdir}/blend-widget.js`, widgetCode)
+            await fm.writeString(`${mdir}/blend.js`, launcherCode)
+
+            Safari.open(URLScheme.forRunningScript())
+            return 0
+          }
+        }
+      }
+    }
+    
     let titleRow = new UITableRow()
     titleRow.height = 120
     
@@ -337,7 +324,7 @@ async function showLauncher(){
     title.titleFont = Font.boldSystemFont(24)
     title.subtitleFont = Font.systemFont(14)
     
-    let authBt = titleRow.addButton("보안")
+    let authBt = titleRow.addButton("연결")
     authBt.widthWeight = 18
     authBt.rightAligned()
     
@@ -365,18 +352,18 @@ async function showLauncher(){
     
     let installRow = new UITableRow()
     installRow.dismissOnSelect = false
+    if(isParameterCopied){ installRow.height = 65 }
     
-    let installText = installRow.addText((new Date().getTime() - data[model.id].activated < 1800000 ? "✓ " : "") + "홈 화면에 " + "구성 " + (mindex + 1) + " 추가")
+    let installText = installRow.addText((new Date().getTime() - data[model.id].activated < 1800000 ? "✓ " : "") + (isParameterCopied ? "복사 완료" : ("홈 화면에 " + "구성 " + (mindex + 1) + " 추가")), isParameterCopied ? "위젯 길게 누르기 → 위젯 편집 → Parameter → 값 입력" : null)
     installText.titleColor = Color.blue()
     
+    installText.subtitleColor = Color.gray()
+    installText.subtitleFont = Font.systemFont(14)
+    
     installRow.onSelect = async () => {
-      let alert = new Alert()
-      alert.title = "구성 " + (mindex + 1) + " 추가"
-      alert.message = `Scriptable 위젯을 길게 누른 후 "위젯 편집", "Parameter"에 아래 값을 입력하십시오.`
-      alert.addTextField("", model.id.toString())
-      alert.addAction("확인")
-      
-      await alert.presentAlert()
+      await Pasteboard.copyString(model.id.toString())
+      isParameterCopied = true
+      refreshMain()
     }
     
     main.addRow(installRow)
@@ -386,7 +373,7 @@ async function showLauncher(){
     previewText.titleColor = Color.blue()
     
     previewRow.onSelect = () => {
-      Safari.open(`scriptable:///run?scriptName=blend-widget&wid=${model.id}`)
+      Safari.open(`scriptable:///run?scriptName=${encodeURI(model.widgetScriptName)}&wid=${model.id}`)
     }
     
     main.addRow(previewRow)
@@ -408,8 +395,9 @@ async function showLauncher(){
     addRowElement("레이아웃", "Layout")
     addRowElement("캘린더와 미리 알림", "Event")
     addRowElement("날씨", "Weather")
-    // addRowElement("코로나19 정보", "Covid")
+    addRowElement("코로나19 정보", "Covid")
     addRowElement("일반 설정", "Misc")
+    addRowElement("도움말과 팁", "Help")
   }
   
   function refreshMain(){
@@ -426,27 +414,38 @@ async function showLauncher(){
     let table = new UITable()
     table.showSeparators = true
     
+    eval(editorElements)
+    
     let layout = {
-      "apwk": ["Apple WeatherKit", "유효한 JWT 방식의 토큰을 입력하십시오. 자세한 내용은 다음 링크를 참조하십시오: https://developer.apple.com/documentation/weatherkitrestapi/request_authentication_for_weatherkit_rest_api"],
-      "opwd": ["OpenWeather", "API 키를 입력하십시오."],
+      "header": "날씨",
+      "blend-appleweather": ["Apple WeatherKit", "Apple 날씨",
+        "유효한 JWT 방식의 토큰을 입력하십시오."],
+      "blend-openweather": ["OpenWeather", "OpenWeather 날씨",
+        "유효한 API 키를 입력하십시오."],
     
     }
     
     function loadTable(){
       for(index in layout){
-        let key = (btoa("BLENDSECURE"+index.toUpperCase()))
+        if(index == "header"){
+          addPropertyHeader(layout[index])
+          continue
+        }
         
         let row = new UITableRow()
+        row.height = 65
         row.dismissOnSelect = false
         
-        let text = row.addText((Keychain.contains(key) ? "✓ " : "") + layout[index][0])
+        let text = row.addText((Keychain.contains(index) ? "✓ " : "") + layout[index][0], layout[index][1])
+        text.subtitleColor = Color.gray()
+        text.subtitleFont = Font.systemFont(14)
         
         row.onSelect = async (number) => {
-          number = Object.keys(layout)[number]
+          let key = Object.keys(layout)[number]
           
           let alert = new Alert()
-          alert.title = layout[number][0]
-          alert.message = layout[number][1]
+          alert.title = layout[key][0]
+          alert.message = layout[key][2]
           alert.addTextField("여기에 붙여넣기", "")
           alert.addAction("확인")
           await alert.presentAlert()
@@ -455,14 +454,7 @@ async function showLauncher(){
             throw -1
           }
           
-          let key = (btoa("BLENDSECURE"+number.toUpperCase()))
           await Keychain.set(key, alert.textFieldValue())
-          
-          let alert2 = new Alert()
-          alert2.title = "저장 완료"
-          alert2.addAction("확인")
-          await alert2.presentAlert()
-          
           refreshTable()
         }
         
@@ -475,12 +467,18 @@ async function showLauncher(){
       
       removeRow.onSelect = async () => {
         for(index in layout){
-          let key = (btoa("BLENDSECURE"+index.toUpperCase()))
-          if(Keychain.contains(key)){ await Keychain.remove(key) }
+          if(Keychain.contains(index)){ await Keychain.remove(index) }
+        }
+        
+        let hiddenKeys = ["blend-appleweather-auth"]
+        
+        for(index in hiddenKeys){
+          if(Keychain.contains(hiddenKeys[index])){ await Keychain.remove(hiddenKeys[index]) }
         }
         
         let alert = new Alert()
-        alert.title = "삭제 완료"
+        alert.title = "삭제가 완료되었습니다."
+        alert.message = "이후 서비스를 이용하려면 연결 정보를 다시 입력해야 합니다."
         alert.addAction("확인")
         await alert.presentAlert()
       }
@@ -532,7 +530,7 @@ async function showLauncher(){
     
     async function saveParts(height, code, img){
       let phone = phoneSizes[height]
-      if(phone.length > 1){ phone = phone[model.bgtemp] }
+      if(phone.length > 1){ phone = phone[model.bgResIndex] }
       
       let partsDir = `${fpath.wdir}/${code}`
       if(!fm.fileExists(partsDir)){ fm.createDirectory(partsDir) }
@@ -570,11 +568,12 @@ async function showLauncher(){
           alert.addAction("확인")
           await alert.presentAlert()
           throw -1
-        } else if(height == 2436 && model.bgtemp == -1){
+        } else if(phoneSizes[height].length > 1 && model.bgResIndex == -1){
           let alert = new Alert()
-          alert.addAction("11 Pro, Xs, X")
-          alert.addAction("12 Mini, 13 Mini")
-          model.bgtemp = await alert.presentAlert()
+          for(i in phoneSizes[height]){
+            alert.addAction(phoneSizes[height][i].models.join(', '))
+          }
+          model.bgResIndex = await alert.presentAlert()
         }
         
         await saveParts(height, now, img)
@@ -613,15 +612,32 @@ async function showLauncher(){
           text.subtitleColor = Color.gray()
           text.subtitleFont = Font.systemFont(14)
           
-          let button = row.addButton("편집")
+          let button = row.addButton("⚙️")
           button.rightAligned()
           
           let temp = parseInt(index).toString()
           
           button.onTap = async () => {
+            let phone = phoneSizes[terrace[temp].height]
+            try{
+              if(phone.length > 1){
+                if(model.bgResIndex == -1){ throw -1 }
+                phone = phone[model.bgResIndex]
+              }
+            } catch(e){
+              let alert = new Alert()
+              alert.title = "해상도를 확인할 수 없음"
+              alert.message = "선택 후 부분 이미지 재생성을 권장합니다."
+              for(i in phone){
+                alert.addAction(phone[i].models.join(', '))
+              }
+              model.bgResIndex = await alert.presentAlert()
+              phone = phone[model.bgResIndex]
+            }
+            
             let alert = new Alert()
             alert.title = terrace[temp].desc
-            alert.message = "적용 기기: " + phoneSizes[terrace[temp].height].models[0] + "와 같은 해상도"
+            alert.message = "적용 기기: " + phone.models[0] + "와 같은 해상도"
             alert.addAction("미리보기")
             alert.addAction("이름 편집")
             alert.addDestructiveAction("부분 이미지 재생성")
@@ -659,7 +675,9 @@ async function showLauncher(){
             alert.addAction("라이트 모드")
             alert.addAction("다크 모드")
             alert.addAction("둘 다 설정")
+            alert.addCancelAction("취소")
             let r = await alert.presentSheet()
+            if(r == -1){ throw -1 }
             if(r % 2 == 0){ pid[0] = Object.keys(terrace)[number] }
             if(r){ pid[1] = Object.keys(terrace)[number] }
             refreshPicker()
@@ -690,6 +708,22 @@ async function showLauncher(){
         }
         
         picker.addRow(addRow)
+        
+        let removeRow = new UITableRow()
+        removeRow.dismissOnSelect = false
+        
+        let removeText = removeRow.addText("기기 해상도 초기화")
+        removeText.titleColor = Color.red()
+        
+        removeRow.onSelect = async () => {
+          let alert = new Alert()
+          alert.addDestructiveAction("기기 해상도 초기화")
+          alert.addCancelAction("취소")
+          let r = await alert.presentSheet()
+          if(r != -1){ model.bgResIndex = -1 }
+        }
+        
+        picker.addRow(removeRow)
       }
       
       function refreshPicker(){
@@ -827,17 +861,27 @@ async function showLauncher(){
         text.subtitleColor = Color.gray()
         text.subtitleFont = Font.systemFont(14)
         
-        row.onSelect = async (number) => {
+        let number = index
+        let button = row.addButton("⚙️")
+        button.rightAligned()
+        
+        row.onSelect = () => {
+          if(mindex != number){
+            model.id = data.identifiers[number]
+            saveAllData()
+            Safari.open(URLScheme.forRunningScript())
+            return 0
+          }
+        }
+        
+        button.onTap = async () => {
           let alert = new Alert()
           alert.title = "구성 " + (parseInt(number) + 1)
           if(mindex != number){
             alert.message = "최근 수정: " + rdf.string(new Date(data[data.identifiers[number]].modified), new Date())
-            alert.addAction("이 구성으로 변경")
-          } else {
-            alert.message = "현재 적용된 구성입니다."
           }
           
-          alert.addAction("설명 편집..")
+          alert.addAction("설명 편집")
           alert.addAction("구성 복제")
           alert.addAction("구성 공유")
           if(data.identifiers.length > 1){ alert.addDestructiveAction("선택한 구성 삭제") }
@@ -845,13 +889,7 @@ async function showLauncher(){
           let r = await alert.presentAlert()
           
           if(r == -1){ throw -1 }
-          if(mindex == number){ r++ }
           if(r == 0){
-            model.id = data.identifiers[number]
-            saveAllData()
-            Safari.open(URLScheme.forRunningScript())
-            return 0
-          } else if(r == 1){
             let alert = new Alert()
             alert.title = "설명 편집"
             alert.addTextField("설명", data[data.identifiers[number]].desc)
@@ -864,22 +902,24 @@ async function showLauncher(){
               data[data.identifiers[number]].devc = alert.textFieldValue(1)
               refreshTable()
             }
-          } else if(r == 2){
+          } else if(r == 1){
             let now = new Date().getTime()
-            data[now] = JSON.parse(JSON.stringify(data[data.identifiers[number]]))
+            const excludes = ["locations", "appleWeather", "openWeather", "covidMohw", "recentPositionRefresh", "recentWeatherRefresh"]
+            let temp = JSON.parse(JSON.stringify(data[data.identifiers[number]]))
+            for(i in excludes){ delete temp[excludes[i]] }
+            data[now] = temp
             data[now].activated = 0
             data.identifiers.push(now)
             model.id = now
             saveAllData()
             Safari.open(URLScheme.forRunningScript())
             return 0
-          } else if(r == 3){
+          } else if(r == 2){
+            const excludes = ["locations", "appleWeather", "openWeather", "covidMohw", "recentPositionRefresh", "recentWeatherRefresh", "covidRegion", "calendars", "reminders"]
             let temp = JSON.parse(JSON.stringify(data[data.identifiers[number]]))
-            delete temp.locations;
-            delete temp.appleWeather; delete temp.openWeather;
-            delete temp.calendars; delete temp.reminders;
+            for(i in excludes){ delete temp[excludes[i]] }
             QuickLook.present( btoa(JSON.stringify(temp)) )
-          } else if(r == 4){
+          } else if(r == 3){
             delete data[data.identifiers[number]]
             data.identifiers.splice(number, 1)
             if(mindex == number){ model.id = data.identifiers[0] }
@@ -954,6 +994,7 @@ async function showLauncher(){
         let alert = new Alert()
         alert.addAction("모든 구성 초기화")
         alert.addAction("다운로드한 이미지 삭제")
+        alert.addAction("서비스 캐시 삭제")
         alert.addCancelAction("취소")
         let r = await alert.presentAlert()
         
@@ -984,6 +1025,12 @@ async function showLauncher(){
             Safari.open(URLScheme.forRunningScript())
             return 0
           }
+        } else if(r == 2){
+          const excludes = ["locations", "appleWeather", "openWeather", "covidMohw"]
+          for(i in excludes){ delete data[model.id][excludes[i]] }
+          data[model.id].recentPositionRefresh = 0
+          data[model.id].recentWeatherRefresh = 0
+          data[model.id].covidCache = 0
         }
       }
       
@@ -1005,18 +1052,14 @@ async function showLauncher(){
     let table = new UITable()
     table.showSeparators = true
     
+    eval(editorElements)
+    
     function loadTable(){
       let sizes = ["소형 위젯", "중형 위젯", "대형 위젯"]
       let positions = [["좌측 상단", "우측 상단", "좌측 중단", "우측 중단", "좌측 하단", "우측 하단"], ["상단", "중단", "하단"], ["상단", "하단"]]
       
       for(let i = 1; i < sizes.length; i++){
-        let header = new UITableRow()
-        header.height = 40
-        
-        let headerText = header.addText(sizes[i])
-        headerText.titleFont = Font.boldSystemFont(14)
-        
-        table.addRow(header)
+        addPropertyHeader(sizes[i])
         
         for(let j = 0; j < positions[i].length; j++){
           let index = i == 1 ? j + 7 : j + 10
@@ -1054,18 +1097,33 @@ async function showLauncher(){
     
     const elements = {
       "text": "텍스트",
+      "text2": "텍스트",
       "date": "날짜",
+
+      // "tags": "태그",
+      
+      // "quickMemo": "빠른 메모",
+      // "dayCounter": "디데이",
       
       "calendar": "캘린더",
       "reminder": "미리 알림",
       
-      // "appleWeather": "Apple 날씨",
+      // "calendarMini": "다음 일정",
+      
+      "appleWeather": "Apple 날씨",
+      // "appleWeatherMini": "Apple 날씨(요약)",
+      
       // "openWeather": "OpenWeather 날씨",
+      // "openWeatherMini": "OpenWeather 날씨(요약)",
       
-      // "covid": "코로나19 정보",
+      "covid": "코로나19 정보",
       
-      "spacer": "상하 여백",
-      "spacer2": "상하 여백",
+      "spacer": "상하 여백(최대)",
+      "spacer2": "상하 여백(최대)",
+      
+      "spacer5": "상하 여백(지정)",
+      "spacer6": "상하 여백(지정)",
+      "spacer7": "상하 여백(지정)",
     }
     
     async function showElementPicker(){
@@ -1088,11 +1146,30 @@ async function showLauncher(){
         }
         
         for(let i = 0; i < data[model.id].layout.length; i++){
+          let subtitle = null
+          if(data[model.id].layout[i] == "spacer5"){
+            subtitle = "크기: " + data[model.id].spacer5
+          } else if(data[model.id].layout[i] == "spacer6"){
+            subtitle = "크기: " + data[model.id].spacer6
+          } else if(data[model.id].layout[i] == "spacer7"){
+            subtitle = "크기: " + data[model.id].spacer7
+          } else if(data[model.id].layout[i] == "text"){
+            subtitle = data[model.id].textString
+          } else if(data[model.id].layout[i] == "text2"){
+            subtitle = data[model.id].textString2
+          }
+          
           let row = new UITableRow()
           row.dismissOnSelect = false
           
-          let text = row.addText("✓ " + elements[data[model.id].layout[i]])
+          let text = row.addText("✓ " + elements[data[model.id].layout[i]], subtitle)
           text.widthWeight = 55
+          
+          if(subtitle != null){
+            text.subtitleColor = Color.gray()
+            text.subtitleFont = Font.systemFont(12)
+            row.height = 60
+          }
           
           let k = i + 0
           
@@ -1147,6 +1224,53 @@ async function showLauncher(){
               let r = await alert.presentAlert()
               if(r == -1 || alert.textFieldValue() === ""){ throw -1 }
               data[model.id].textString = alert.textFieldValue()
+            } else if(availableElements[j] == "text2"){
+              let alert = new Alert()
+              alert.title = "표시할 텍스트 입력"
+              alert.addTextField("", "")
+              alert.addAction("확인")
+              alert.addCancelAction("취소")
+              
+              let r = await alert.presentAlert()
+              if(r == -1 || alert.textFieldValue() === ""){ throw -1 }
+              data[model.id].textString2 = alert.textFieldValue()
+            } else if(availableElements[j] == "spacer5" || availableElements[j] == "spacer6" || availableElements[j] == "spacer7"){
+              let alert = new Alert()
+              alert.title = "상하 여백 상대 값"
+              let i = alert.addTextField("", "")
+              i.setDecimalPadKeyboard()
+              alert.addAction("확인")
+              alert.addCancelAction("취소")
+              
+              let r = await alert.presentAlert()
+              if(r == -1 || alert.textFieldValue() === ""){ throw -1 }
+              data[model.id][availableElements[j]] = parseFloat(alert.textFieldValue())
+            } else if(availableElements[j] == "appleWeather"){
+              if(!Keychain.contains("blend-appleweather-auth") && !Keychain.contains("blend-appleweather")){
+                let alert = new Alert()
+                alert.title = "구성 요소를 추가할 수 없음"
+                alert.message = "인증 정보를 확인할 수 없습니다."
+                alert.addAction("지금 입력하기")
+                alert.addCancelAction("취소")
+                
+                let r = await alert.presentAlert()
+                if(r == 0){ await showAuthTable() }
+                
+                throw -1
+              }
+            } else if(availableElements[j] == "openWeather"){
+              if(!Keychain.contains("blend-openweather")){
+                let alert = new Alert()
+                alert.title = "구성 요소를 추가할 수 없음"
+                alert.message = "인증 정보를 확인할 수 없습니다."
+                alert.addAction("지금 입력하기")
+                alert.addCancelAction("취소")
+                
+                let r = await alert.presentAlert()
+                if(r == 0){ await showAuthTable() }
+                
+                throw -1
+              }
             }
             
             data[model.id].layout.push(availableElements[j])
@@ -1168,6 +1292,21 @@ async function showLauncher(){
     }
     
     function loadTable(){
+      let elementRow = new UITableRow()
+      elementRow.dismissOnSelect = false
+      
+      let elementText = elementRow.addText("구성 요소")
+      elementText.titleColor = Color.blue()
+      
+      elementRow.onSelect = async () => {
+        await showElementPicker()
+        refreshTable()
+      }
+      
+      table.addRow(elementRow)
+      
+      addPropertyHeader("위젯 전역 설정")
+      
       let paddingRow = new UITableRow()
       paddingRow.height = 65
       paddingRow.dismissOnSelect = false
@@ -1264,27 +1403,47 @@ async function showLauncher(){
       
       table.addRow(textSizeRow)
       
-      let elementRow = new UITableRow()
-      elementRow.dismissOnSelect = false
+      addTextFieldElements("기본 아이콘 크기", "iconSize", 
+        "SF Symbol 아이콘에 적용됩니다.",
+        "", "")
       
-      let elementText = elementRow.addText("구성 요소")
-      elementText.titleColor = Color.blue()
+      let displayMode = ["주로 밝게", "주로 어둡게"]
+      addMultipleIndexElements("스택 배경 스타일", "displayMode", displayMode)
+
+      addTextFieldElements("스택 배경 투명도", "stackOpacity", 
+        "일부 구성 요소에 배경이 포함되어 있을 경우, 투명도를 조정할 수 있습니다.",
+        "", "")
       
-      elementRow.onSelect = async () => {
-        await showElementPicker()
-        refreshTable()
-      }
+      let itmAlignment = ["좌측에 배치", "중앙에 배치", "우측에 배치"]
+      addMultipleIndexElements("구성 요소 정렬", "itmAlignment", itmAlignment)
       
-      table.addRow(elementRow)
+      addTextFieldElements("좌우 여백 오프셋", "itmSpacerOffset", 
+        "구성 요소가 좌측 또는 우측에 배치되어 있을 경우, 추가적인 여백에 대한 오프셋을 지정할 수 있습니다.",
+        "", "")
+      
+      addTextFieldElements("상하 반복 여백 오프셋", "itmRepeatOffset", 
+        "각각의 구성 요소 사이에 상하 여백을 설정할 수 있습니다.",
+        "", "")
       
       if(data[model.id].layout.indexOf("date") != -1){
         addPropertyHeader("날짜")
         addTextProperty("오늘 날짜", "dateText")
+        addTickerElements("배터리 보기", "showBattery")
       }
       
       if(data[model.id].layout.indexOf("text") != -1){
-        addPropertyHeader("텍스트")
+        addPropertyHeader("텍스트: " + data[model.id].textString)
         addTextProperty("텍스트", "simpleText")
+      }
+      
+      if(data[model.id].layout.indexOf("text2") != -1){
+        addPropertyHeader("텍스트: " + data[model.id].textString2)
+        addTextProperty("텍스트", "simpleText2")
+      }
+      
+      if(data[model.id].layout.indexOf("quickMemo") != -1){
+        addPropertyHeader("빠른 메모")
+        addTextProperty("텍스트", "quickMemoText")
       }
       
       if(data[model.id].layout.indexOf("calendar") != -1){
@@ -1298,6 +1457,18 @@ async function showLauncher(){
       if(data[model.id].layout.indexOf("reminder") != -1){
         addPropertyHeader("미리 알림")
         addTextProperty("미리 알림 제목", "reminderTitle")
+        addTextProperty("미리 알림 내용", "reminderDate")
+      }
+      
+      if(data[model.id].layout.indexOf("appleWeather") != -1){
+        addPropertyHeader("Apple 날씨")
+        addTextProperty("일출과 일몰 시간", "awSolarText")
+        addTextProperty("기상 정보 텍스트", "awDetailText")
+      }
+      
+      if(data[model.id].layout.indexOf("covid") != -1){
+        addPropertyHeader("코로나19 정보")
+        addTextProperty("제목 및 내용", "covidTitle")
       }
       
       function addTextProperty(message, code){
@@ -1305,7 +1476,12 @@ async function showLauncher(){
         row.height = 65
         row.dismissOnSelect = false
         
-        let text = row.addText(message, fonts[data[model.id]["_" + code][0]] + ", " + data[model.id]["_" + code][2])
+        let string
+        let currentFont = data[model.id]["_" + code][0]
+        if(currentFont){ string = fontsDesc[currentFont] }
+        else { string = data[model.id]["_" + code][1] ? data[model.id]["_" + code][1] : "커스텀 폰트" }
+        
+        let text = row.addText(message, string + ", " + data[model.id]["_" + code][2])
         text.subtitleColor = Color.gray()
         text.subtitleFont = Font.systemFont(14)
         
@@ -1319,15 +1495,18 @@ async function showLauncher(){
               row.dismissOnSelect = true
               
               let string
+              if(i){ string = fontsDesc[i] }
+              else { string = data[model.id]["_" + code][1] ? data[model.id]["_" + code][1] : "커스텀 폰트" }
               
-              let text = row.addText((data[model.id]["_" + code][0] == i ? "✓ " : "") + (i || data[model.id]["_" + code][1] === "" ? fonts[i] : data[model.id]["_" + code][1]))
+              let text = row.addText((data[model.id]["_" + code][0] == i ? "✓ " : "") + string)
+              if(data[model.id]["_" + code][0] == i){ text.titleColor = Color.blue() }
               
               row.onSelect = async (number) => {
                 let alert = new Alert()
                 alert.title = fonts[number]
                 let i = alert.addTextField("폰트 크기", data[model.id]["_" + code][2].toString())
                 i.setDecimalPadKeyboard()
-                if(!number){ alert.addTextField(data[model.id]["_" + code][1] === "" ? "커스텀 폰트 이름" : data[model.id]["_" + code][1], "") }
+                if(!number){ alert.addTextField(data[model.id]["_" + code][1], data[model.id]["_" + code][1]) }
                 alert.addAction("확인"); alert.addCancelAction("취소");
                 let r = await alert.presentAlert()
                 if(r == -1){ throw -1 }
@@ -1340,6 +1519,18 @@ async function showLauncher(){
               
               picker.addRow(row)
             }
+            
+            let resetRow = new UITableRow()
+            
+            let resetText = resetRow.addText("초기 설정으로 복원")
+            resetText.titleColor = Color.red()
+            
+            resetRow.onSelect = () => {
+              data[model.id]["_" + code] = data.origin["_" + code]
+              refreshTable()
+            }
+            
+            picker.addRow(resetRow)
           }
           
           function refreshPicker(){
@@ -1350,8 +1541,6 @@ async function showLauncher(){
           
           loadPicker()
           await picker.present()
-          
-          // refreshTable()
         }
         
         table.addRow(row)
@@ -1458,7 +1647,9 @@ async function showLauncher(){
       pickerRow.dismissOnSelect = false
       pickerRow.height = 65
       
-      let pickerText = pickerRow.addText("위젯에 표시할 캘린더", `${data[model.id].calendars.length}개 선택됨`)
+      let calCnt = data[model.id].calendars.length
+      
+      let pickerText = pickerRow.addText("위젯에 표시할 캘린더", calCnt ? `${calCnt}개 선택됨` : "모든 캘린더 표시")
       pickerText.subtitleColor = Color.gray()
       pickerText.subtitleFont = Font.systemFont(14)
       
@@ -1472,15 +1663,18 @@ async function showLauncher(){
       addTextFieldElements("표시할 이벤트 개수", "calendarLength",
         "위젯에 최대로 표시할 수 있는 이벤트의 개수를 설정합니다.", "예정된 ", "개의 이벤트 표시")
       
-      addTickerElements("캘린더 2열로 표시", "calendarTwoRow")
+      addTickerElements("달력 보기", "setCalendarView")
+      addTickerElements("2열 레이아웃 적용", "calendarTwoRow")
+      
+      addPropertyHeader("이벤트 표시 범위", true)
       
       addTickerElements("하루 종일 이벤트 표시", "showAllDayEvents")
-      addTickerElements("오늘 진행되는 이벤트만 표시", "showTodayEvents")
-      if(!data[model.id].showTodayEvents){
-        addTextFieldElements("이벤트 표시 범위", "distanceEventStartDate", 
-          "이벤트를 가져올 범위를 지정합니다. 소수점은 시간 단위로 변환하여 적용됩니다.",
-          "시작 시간이 ", "일 이내인 이벤트")
-      }
+      
+      addTextFieldElements("이벤트 표시 범위", "distanceEventStartDate", 
+        "이벤트를 가져올 범위를 지정합니다.",
+        "", "일 후의 이벤트까지 표시")
+      
+      addPropertyHeader("세부 설정", true)
       
       addTextFieldElements("지나간 이벤트 숨기기", "delayHideEventsMin", 
         "이미 시작된 이벤트를 위젯에서 숨깁니다.", "시작 시간이 ", "분 이상 지난 이벤트")
@@ -1490,13 +1684,27 @@ async function showLauncher(){
         ["시작 시간과 기간", "시작 시간과 종료 시간", "시작 시간과 위치"], false, 
         ["시작 시간과 기간", "시작 시간과 종료 시간", "시작 시간과 위치"])
       
+      let imageRow = new UITableRow()
+      imageRow.dismissOnSelect = false
+      
+      let imageText = imageRow.addText("배경 이미지 설정")
+      imageText.titleColor = Color.blue()
+      
+      // table.addRow(imageRow)
+      
+      imageRow.onSelect = () => {
+        
+      }
+      
       addPropertyHeader("미리 알림")
       
       let pickerRow2 = new UITableRow()
       pickerRow2.dismissOnSelect = false
       pickerRow2.height = 65
       
-      let pickerText2 = pickerRow2.addText("위젯에 표시할 미리 알림 목록", `${data[model.id].reminders.length}개 선택됨`)
+      let remCnt = data[model.id].reminders.length
+      
+      let pickerText2 = pickerRow2.addText("위젯에 표시할 미리 알림 목록", remCnt ? `${remCnt}개 선택됨` : "모든 미리 알림 표시")
       pickerText2.subtitleColor = Color.gray()
       pickerText2.subtitleFont = Font.systemFont(14)
       
@@ -1510,12 +1718,18 @@ async function showLauncher(){
       addTextFieldElements("표시할 미리 알림 개수", "reminderLength",
         "위젯에 최대로 표시할 수 있는 미리 알림의 개수를 설정합니다.", "예정된 ", "개의 미리 알림 표시")
       
-      addTickerElements("늦은 미리 알림도 표시", "showLateReminders")
-      addTickerElements("예정 시간이 있는 미리 알림만 표시", "showForTimedReminders")
+      addPropertyHeader("미리 알림 표시 범위", true)
       
+      addTickerElements("예정 시간이 있는 미리 알림만 표시", "showForTimedReminders")
       if(data[model.id].showForTimedReminders){
         addTickerElements("오늘 진행되는 미리 알림만 표시", "showTodayReminders")
       }
+      
+      addPropertyHeader("세부 설정", true)
+      
+      addTickerElements("늦은 미리 알림도 표시", "showLateReminders")
+      
+      addTickerElements("시작 시간 순으로 정렬", "sortReminderByTime")
     }
     
     function refreshTable(){
@@ -1541,6 +1755,28 @@ async function showLauncher(){
       addTextFieldElements("날씨 정보 새로고침 간격", "delayWeatherCacheMin", 
         "날씨 정보를 다시 가져오기 위해 필요한 최소 간격을 지정합니다.", "", "분")
       
+      addTickerElements("화씨 온도 사용", "weatherCtoF")
+      
+      if(data[model.id].layout.indexOf("appleWeather") != -1){
+        addTickerElements("날씨 상태 한국어로 사용", "weatherAlternativeDesc")
+
+        addPropertyHeader("Apple 날씨")
+        addTickerElements("현재 온도", "apwdTemp")
+        addTickerElements("기상 정보", "apwdDetail")
+        addTickerElements("당일 시간별 예보", "apwdHourly")
+        addTickerElements("일간 예보", "apwdDaily")
+        
+        addPropertyHeader("현재 온도", true)
+        addTickerElements("일출과 일몰 시간", "apwdSolarMovement")
+        
+        addPropertyHeader("기상 정보", true)
+        addTickerElements("기압", "apwdPressure")
+        addTickerElements("습도", "apwdHumidity")
+        addTickerElements("체감 온도", "apwdApparentTemp")
+        addTickerElements("강수량", "apwdPrecip")
+        addTickerElements("바람 속도", "apwdWindSpeed")
+        addTickerElements("자외선 지수", "apwdUvIndex")
+      }
     }
     
     function refreshTable(){
@@ -1555,15 +1791,58 @@ async function showLauncher(){
   
   // CovidTable
   async function showCovidTable(){
+    const regionsArr = ['서울', '부산', '대구', '인천', '광주', '대전', '울산', '세종', '경기', '강원', '충북', '충남', '전북', '전남', '경북', '경남', '제주', '검역']
+    
     let table = new UITable()
     table.showSeparators = true
     
     eval(editorElements)
     
     function loadTable(){
-      addTextFieldElements("코로나19 수신 국가", "covidRegion", 
-        "", "", "")
+      let row = new UITableRow()
+      row.dismissOnSelect = false
+      row.height = 65
       
+      let text = row.addText("코로나19 수신 지역", regionsArr[data[model.id].covidRegion - 1])
+      text.subtitleColor = Color.gray()
+      text.subtitleFont = Font.systemFont(14)
+      
+      row.onSelect = async () => {
+        let picker = new UITable()
+        picker.showSeparators = true
+        
+        function loadPicker(){
+          for(let i = 0; i < regionsArr.length; i++){
+            let row = new UITableRow()
+            row.dismissOnSelect = false
+            
+            let text = row.addText((data[model.id].covidRegion == i + 1 ? "✓ " : "") + regionsArr[i])
+            
+            row.onSelect = (j) => {
+              data[model.id].covidRegion = j + 1
+              data[model.id].covidCache = 0
+              refreshPicker()
+            }
+            
+            picker.addRow(row)
+          }
+        }
+        
+        function refreshPicker(){
+          picker.removeAllRows()
+          loadPicker()
+          picker.reload()
+        }
+        
+        loadPicker()
+        await picker.present()
+        
+        refreshTable()
+      }
+      
+      table.addRow(row)
+
+      addTickerElements("자세한 내용 보기", "covidShowDetail")
     }
     
     function refreshTable(){
@@ -1580,18 +1859,202 @@ async function showLauncher(){
   async function showMiscTable(){
     let table = new UITable()
     table.showSeparators = true
+
+    let df = new DateFormatter()
+    df.dateFormat = "yyyy년 M월 d일"
+    df.locale = "ko-kr"
     
     eval(editorElements)
     
     function loadTable(){
+      let hStackRow = new UITableRow()
+      hStackRow.height = 65
+      hStackRow.dismissOnSelect = false
+      
+      let hStackText = hStackRow.addText("레이아웃 가로 크기", `${model.stackWidth}`)
+      hStackText.subtitleColor = Color.gray()
+      hStackText.subtitleFont = Font.systemFont(14)
+      
+      hStackRow.onSelect = async () => {
+        let alert = new Alert()
+        alert.title = "레이아웃 가로 크기"
+        alert.message = "기기에 따라 이 값을 조정할 수 있습니다. 해당 옵션은 모든 구성에서 공유됩니다."
+        let i = alert.addTextField("", model.stackWidth.toString())
+        i.setDecimalPadKeyboard()
+        alert.addAction("확인")
+        alert.addCancelAction("취소")
+        let r = await alert.presentAlert()
+        
+        if(r != -1){
+          let n = parseFloat(alert.textFieldValue())
+          if(!isNaN(n) && n > 0){ model.stackWidth = n }
+          refreshTable()
+        }
+      }
+      
+      table.addRow(hStackRow)
+      
       addTextFieldElements("날짜 포맷", "dateFormat", 
         "", "", "")
       addTextFieldElements("시간 포맷", "timeFormat", 
         "", "", "")
       addTextFieldElements("표시 로케일", "locale", 
         "날짜 및 시간 포맷에 적용됩니다.", "", "")
+
+      let widgetNameRow = new UITableRow()
+      widgetNameRow.height = 65
+      widgetNameRow.dismissOnSelect = false
+      
+      let widgetNameText = widgetNameRow.addText("위젯 스크립트 이름", `${model.widgetScriptName}`)
+      widgetNameText.subtitleColor = Color.gray()
+      widgetNameText.subtitleFont = Font.systemFont(14)
+      
+      widgetNameRow.onSelect = async () => {
+        let alert = new Alert()
+        alert.title = "위젯 스크립트 이름"
+        alert.addTextField("blend-widget", model.widgetScriptName)
+        alert.addAction("확인")
+        alert.addCancelAction("취소")
+
+        let r = await alert.presentAlert()
+        
+        if(r != -1){
+          model.widgetScriptName = alert.textFieldValue()
+          refreshTable()
+        }
+      }
+
+      table.addRow(widgetNameRow)
+      
+      let checkRow = new UITableRow()
+      checkRow.height = 65
+      
+      let checkText = checkRow.addText("온라인 컨텐츠 새로고침", "최근 확인: " + df.string(new Date(model.updateCache)))
+      checkText.subtitleColor = Color.gray()
+      checkText.subtitleFont = Font.systemFont(14)
+      
+      checkRow.onSelect = () => {
+        model.updateCache = -1
+        model.service = -1
+        
+        saveAllData()
+        Safari.open(URLScheme.forRunningScript())
+        return 0
+      }
+      
+      table.addRow(checkRow)
+      
+      addPropertyHeader("개발자")
+      
+      let devRow = new UITableRow()
+      devRow.dismissOnSelect = false
+      
+      let devText = devRow.addText((model.id == model.devid ? "✓ " : "") + "위젯에 강제 로드")
+      
+      devRow.onSelect = () => {
+        if(model.id == model.devid){ model.devid = -1 }
+        else { model.devid = model.id }
+        refreshTable()
+      }
+      
+      table.addRow(devRow)
+      
+      addTickerElements("모든 서비스 강제 로드", "forceLoadService")
+      
+      let borderRow = new UITableRow()
+      borderRow.dismissOnSelect = false
+      
+      let borderText = borderRow.addText((model.showBorder ? "✓ " : "") + "Stack 테두리 표시")
+      
+      borderRow.onSelect = () => {
+        model.showBorder = 1 - model.showBorder
+        refreshTable()
+      }
+      
+      table.addRow(borderRow)
+      
+      let devRow2 = new UITableRow()
+      devRow2.dismissOnSelect = false
+      
+      let devText2 = devRow2.addText("구성 Raw 데이터 보기")
+      devText2.titleColor = Color.blue()
+      
+      devRow2.onSelect = () => {
+        QuickLook.present(data[model.id])
+      }
+      
+      table.addRow(devRow2)
     }
     
+    function refreshTable(){
+      table.removeAllRows()
+      loadTable()
+      table.reload()
+    }
+    
+    loadTable()
+    await table.present()
+  }
+
+  // HelpTable
+  async function showHelpTable(){
+    let table = new UITable()
+    table.showSeparators = true
+
+    let df = new DateFormatter()
+    df.dateFormat = "yyyy년 M월 d일"
+    df.locale = "ko-kr"
+    
+    eval(editorElements)
+    
+    function loadTable(){
+      if(model.service != null){
+        if(model.service.announcement != undefined){
+          if(model.service.announcement.length){
+            for(let i = 0; i < model.service.announcement.length; i++){
+              let row = new UITableRow()
+              row.height = 65
+              row.dismissOnSelect = false
+
+              let text = row.addText(model.service.announcement[i].title, "추가됨: " + df.string(new Date(model.service.announcement[i].startDate)))
+              text.subtitleColor = Color.gray()
+              text.subtitleFont = Font.systemFont(14)
+
+              table.addRow(row)
+
+              row.onSelect = () => {
+                Safari.openInApp(model.service.announcement[i].link, false)
+              }
+            }
+          }
+        }
+      }
+
+      let helpRow1 = new UITableRow()
+      helpRow1.dismissOnSelect = false
+      
+      let helpText1 = helpRow1.addText("Blend 관련 문서")
+      helpText1.titleColor = Color.blue()
+      
+      helpRow1.onSelect = () => {
+        Safari.open("https://blend.oopy.io/install")
+      }
+      
+      table.addRow(helpRow1)
+
+      let helpRow2 = new UITableRow()
+      helpRow2.dismissOnSelect = false
+      
+      let helpText2 = helpRow2.addText("공식 디스코드에 참여하기")
+      helpText2.titleColor = Color.blue()
+      
+      helpRow2.onSelect = () => {
+        Safari.open("https://discord.gg/BCP2S7BdaC")
+      }
+      
+      table.addRow(helpRow2)
+    }
+
     function refreshTable(){
       table.removeAllRows()
       loadTable()
@@ -1604,12 +2067,37 @@ async function showLauncher(){
 }
 
 const editorElements = `
-    function addPropertyHeader(title){
+    function addMultipleIndexElements(title, code, list){
+      let row = new UITableRow()
+      row.height = 65
+      row.dismissOnSelect = false
+      
+      let text = row.addText(title, list[data[model.id][code]])
+      text.subtitleColor = Color.gray()
+      text.subtitleFont = Font.systemFont(14)
+      
+      row.onSelect = async () => {
+        let alert = new Alert()
+        for(i in list){
+          alert.addAction((data[model.id][code] == i ? "✓ " : "") + list[i])
+        }
+        alert.addCancelAction("취소")
+        let r = await alert.presentSheet()
+        if(r == -1){ throw -1 }
+        data[model.id][code] = r
+        refreshTable()
+      }
+      
+      table.addRow(row)
+    }
+    
+    function addPropertyHeader(title, applySubtitleColor){
       let header = new UITableRow()
       header.height = 40
       
       let headerText = header.addText(title)
       headerText.titleFont = Font.boldSystemFont(14)
+      headerText.titleColor = applySubtitleColor ? Color.orange() : Color.purple()
       
       table.addRow(header)
     }
@@ -1684,6 +2172,139 @@ const editorElements = `
     }
 `
 
+const phoneSizes = {
+  "2778": {
+    "models": ["13 Pro Max", "12 Pro Max"],
+    "small": { "w": 510, "h": 510 },
+    "medium": { "w": 1092, "h": 510 },
+    "large": { "w": 1092, "h": 1146 },
+    "left": 96,
+    "right": 678,
+    "top": 246,
+    "middle": 882,
+    "bottom": 1518
+  },
+
+  "2532": {
+    "models": ["13 Pro", "13", "12 Pro", "12"],
+    "small": { "w": 474, "h": 474 },
+    "medium": { "w": 1014, "h": 474 },
+    "large": { "w": 1014, "h": 1062 },
+    "left": 78,
+    "right": 618,
+    "top": 231,
+    "middle": 819,
+    "bottom": 1407
+  },
+
+  "2688": {
+    "models": ["11 Pro Max", "Xs Max"],
+    "small": { "w": 507, "h": 507 },
+    "medium": { "w": 1080, "h": 507 },
+    "large": { "w": 1080, "h": 1137 },
+    "left": 81,
+    "right": 654,
+    "top": 228,
+    "middle": 858,
+    "bottom": 1488
+  },
+
+  "1792": {
+    "models": ["11", "Xr"],
+    "small": { "w": 338, "h": 338 },
+    "medium": { "w": 720, "h": 338 },
+    "large": { "w": 720, "h": 758 },
+    "left": 54,
+    "right": 436,
+    "top": 160,
+    "middle": 580,
+    "bottom": 1000
+  },
+
+  "2436": [{
+    "models": ["11 Pro", "Xs", "X"],
+    "small": { "w": 465, "h": 465 },
+    "medium": { "w": 987, "h": 465 },
+    "large": { "w": 987, "h": 1035 },
+    "left": 69,
+    "right": 591,
+    "top": 213,
+    "middle": 783,
+    "bottom": 1353
+  },
+  {
+    "models": ["13 Mini", "12 Mini"],
+    "small": { "w": 465, "h": 465 },
+    "medium": { "w": 987, "h": 465 },
+    "large": { "w": 987, "h": 1035 },
+    "left": 69,
+    "right": 591,
+    "top": 231,
+    "middle": 801,
+    "bottom": 1371
+  }],
+
+  "2208": {
+    "models": ["6+", "6s+", "7+", "8+"],
+    "small": { "w": 471, "h": 471 },
+    "medium": { "w": 1044, "h": 471 },
+    "large": { "w": 1044, "h": 1071 },
+    "left": 99,
+    "right": 672,
+    "top": 114,
+    "middle": 696,
+    "bottom": 1278
+  },
+
+  "1334": {
+    "models": ["6", "6s", "7", "8"],
+    "small": { "w": 296, "h": 296 },
+    "medium": { "w": 642, "h": 296 },
+    "large": { "w": 642, "h": 648 },
+    "left": 54,
+    "right": 400,
+    "top": 60,
+    "middle": 412,
+    "bottom": 764
+  },
+
+  "1136": {
+    "models": ["5", "5s", "5c", "SE"],
+    "small": { "w": 282, "h": 282 },
+    "medium": { "w": 584, "h": 282 },
+    "large": { "w": 584, "h": 622 },
+    "left": 30,
+    "right": 332,
+    "top": 59,
+    "middle": 399,
+    "bottom": 399
+  },
+  
+  "1624": {
+    "models": ["11 Display Zoom mode", "XR Display Zoom mode"],
+    "small": { "w": 310, "h": 310 },
+    "medium": { "w": 658, "h": 310 },
+    "large": { "w": 658, "h": 690 },
+    "left": 46,
+    "right": 394,
+    "top": 142,
+    "middle": 522,
+    "bottom": 902
+  },
+  
+  "2001": {
+    "models": ["Plus Display Zoom mode"],
+    "small": { "w": 444, "h": 444 },
+    "medium": { "w": 963, "h": 444 },
+    "large": { "w": 963, "h": 972 },
+    "left": 81,
+    "right": 600,
+    "top": 90,
+    "middle": 618,
+    "bottom": 1146
+  }
+}
+
 function saveAllData(){
   fm.writeString(fpath.data, JSON.stringify(data))
   fm.writeString(fpath.model, JSON.stringify(model))
@@ -1695,11 +2316,3 @@ if(config.runsInApp){
   saveAllData()
   fm.writeString(fpath.wall, JSON.stringify(terrace))
 }
-
-function getSymbolImage(code, imageSize){
-  let sfs = SFSymbol.named(code)
-  sfs.applyFont(Font.systemFont(imageSize))
-  return sfs.image
-}
-
-
