@@ -2,12 +2,14 @@
   "latestVersion": "1.4",
   "announcement": [
     {
-      "title": "가이드 · 최신 버전으로 업데이트하기",
-      "link": "https://blend.oopy.io/howto-update"
+      "title": "최신 버전으로 업데이트하기",
+      "link": "https://blend.oopy.io/howto-update",
+      "startDate": 1661742000000,
     },
     {
-      "title": "가이드 · 폰트 모음 설치하기",
-      "link": "https://blend.oopy.io/fonts"
+      "title": "폰트 모음 설치하기",
+      "link": "https://blend.oopy.io/fonts",
+      "startDate": 1661742000000,
     }
   ]
 }
