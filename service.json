@@ -1,5 +1,5 @@
 {
-  "latestVersion": "1.4.1",
+  "latestVersion": "1.5",
   "announcement": [
     {
       "title": "최신 버전으로 업데이트하기",
@@ -10,6 +10,11 @@
       "title": "폰트 모음 설치하기",
       "link": "https://blend.oopy.io/fonts",
       "startDate": 1661742000000,
+    },
+    {
+      "title": "Apple 날씨 서비스 적용하기",
+      "link": "https://blend.oopy.io/setup-weatherkit",
+      "startDate": 1664118000000,
     }
   ],
   "serviceData": {
